@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alarm Sound Survey</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#181b22; --card2:#1f232c; --line:#2a2f3a;
+    --text:#e8eaed; --muted:#9aa3b2; --accent:#4f8cff; --accent2:#2563eb;
+    --good:#22c55e; --pick:#1e3a8a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;padding:24px 16px 80px}
+  .wrap{max-width:760px;margin:0 auto}
+  header h1{font-size:26px;margin:0 0 6px}
+  header p{color:var(--muted);margin:0 0 24px}
+  .section{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:18px 18px 8px;margin-bottom:22px}
+  .section h2{font-size:18px;margin:0 0 4px}
+  .section .hint{color:var(--muted);font-size:13px;margin:0 0 14px}
+  .row{display:flex;align-items:center;gap:14px;background:var(--card2);
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;
+    transition:border-color .15s,background .15s}
+  .row.selected{border-color:var(--accent);background:var(--pick)}
+  .play{flex:0 0 auto;width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;
+    background:var(--accent2);color:#fff;font-size:16px;display:flex;align-items:center;
+    justify-content:center}
+  .play.playing{background:var(--good)}
+  .label{flex:1;font-size:15px;font-weight:500}
+  .pickbtn{flex:0 0 auto;border:1px solid var(--line);background:transparent;color:var(--muted);
+    border-radius:8px;padding:8px 14px;cursor:pointer;font-size:14px;font-weight:600}
+  .row.selected .pickbtn{background:var(--accent);border-color:var(--accent);color:#fff}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+  .field label{font-size:13px;color:var(--muted)}
+  .field input,.field textarea{background:var(--card2);border:1px solid var(--line);
+    border-radius:8px;color:var(--text);padding:10px 12px;font-size:15px;font-family:inherit}
+  textarea{resize:vertical;min-height:70px}
+  .submit{width:100%;background:var(--accent2);color:#fff;border:none;border-radius:10px;
+    padding:15px;font-size:16px;font-weight:700;cursor:pointer}
+  .submit:disabled{opacity:.5;cursor:not-allowed}
+  .msg{text-align:center;margin-top:14px;font-size:14px;min-height:20px}
+  .msg.ok{color:var(--good)} .msg.err{color:#f87171}
+  .count{color:var(--muted);font-size:12px;float:right;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔊 Alarm Sound Survey</h1>
+    <p>Tap ▶ to listen, then hit <b>Pick</b> on any sounds you like. Choose as many as you want in each section.</p>
+  </header>
+
+  <div class="field">
+    <label>Your name</label>
+    <input id="name" type="text" placeholder="Jane Doe">
+  </div>
+  <div class="field">
+    <label>Email (optional)</label>
+    <input id="email" type="email" placeholder="jane@example.com">
+  </div>
+
+  <div class="section" id="fun">
+    <h2>Fun Alarms <span class="count" id="funCount">0 picked</span></h2>
+    <p class="hint">The playful, themed options.</p>
+  </div>
+
+  <div class="section" id="trad">
+    <h2>Traditional Alarms <span class="count" id="tradCount">0 picked</span></h2>
+    <p class="hint">The classic rings and tones.</p>
+  </div>
+
+  <div class="field">
+    <label>Comments (optional)</label>
+    <textarea id="comments" placeholder="Any thoughts on the sounds…"></textarea>
+  </div>
+
+  <button class="submit" id="submitBtn">Submit my picks</button>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+/* ============================================================
+   STEP 1 — PASTE YOUR AIRTABLE TOKEN BELOW (between the quotes).
+   Create one at https://airtable.com/create/tokens
+   Scope: data.records:write   |   Access: the "Alarm Sound Survey" base
+   ============================================================ */
+const AIRTABLE_TOKEN = "patS6OmAUX0Z4jbMk.e0d6e826e867da49ee9afdc5ab3c6c2286dd49c92bb45974946cfbc0c99c7d6f";
+
+const BASE_ID  = "appIy7mOABWahjswK";
+const TABLE_ID = "tblfte5xcjfOM6tab";
+const BASE_URL = "https://gdsupport.gdserver.net/CAREpoint3Sounds/";
+
+const FUN = [
+  ["Air Raid","air-raid.wav"],
+  ["Ambulance Siren","ambulance-siren.wav"],
+  ["Batman Theme","batman-theme.wav"],
+  ["Dragnet Theme","dragnet-theme.wav"],
+  ["ER Theme","er-theme.wav"],
+  ["Ghostbusters Theme","ghostbusters-theme.wav"],
+  ["Law and Order Theme","law-and-order-theme.wav"],
+  ["Mission Impossible Theme","mission-impossible-theme.wav"],
+  ["NFL on Fox Theme","nfl-on-fox-theme.wav"],
+  ["Scrubs Theme","scrubs-theme.wav"],
+  ["The Magnificent Seven Theme","the-magnificent-seven-theme.wav"]
+];
+const TRAD = [
+  ["Ring 4","ring-4.wav"],
+  ["Ring 5","ring-5.wav"],
+  ["Ring 2","ring-2.wav"],
+  ["Navy Alarm 6","navy-alarm-6.wav"]
+];
+
+const funPicks = new Set();
+const tradPicks = new Set();
+let currentAudio = null, currentBtn = null;
+
+function buildSection(containerId, list, pickSet, countId){
+  const c = document.getElementById(containerId);
+  list.forEach(([label, file])=>{
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const play = document.createElement("button");
+    play.className = "play"; play.textContent = "▶";
+    const audio = new Audio(BASE_URL + file);
+    play.onclick = ()=>{
+      if(currentAudio && currentAudio !== audio){ currentAudio.pause(); currentAudio.currentTime=0; }
+      if(currentBtn && currentBtn !== play){ currentBtn.classList.remove("playing"); currentBtn.textContent="▶"; }
+      if(audio.paused){ audio.play(); play.classList.add("playing"); play.textContent="⏸"; currentAudio=audio; currentBtn=play; }
+      else { audio.pause(); play.classList.remove("playing"); play.textContent="▶"; }
+    };
+    audio.onended = ()=>{ play.classList.remove("playing"); play.textContent="▶"; };
+
+    const name = document.createElement("div");
+    name.className = "label"; name.textContent = label;
+
+    const pick = document.createElement("button");
+    pick.className = "pickbtn"; pick.textContent = "Pick";
+    pick.onclick = ()=>{
+      if(pickSet.has(label)){ pickSet.delete(label); row.classList.remove("selected"); pick.textContent="Pick"; }
+      else { pickSet.add(label); row.classList.add("selected"); pick.textContent="✓ Picked"; }
+      document.getElementById(countId).textContent = pickSet.size + " picked";
+    };
+
+    row.append(play, name, pick);
+    c.append(row);
+  });
+}
+
+buildSection("fun", FUN, funPicks, "funCount");
+buildSection("trad", TRAD, tradPicks, "tradCount");
+
+const msg = document.getElementById("msg");
+document.getElementById("submitBtn").onclick = async ()=>{
+  const name = document.getElementById("name").value.trim();
+  if(!name){ msg.className="msg err"; msg.textContent="Please enter your name."; return; }
+  if(AIRTABLE_TOKEN === "PASTE_YOUR_TOKEN_HERE"){
+    msg.className="msg err"; msg.textContent="Survey not configured yet (missing Airtable token)."; return;
+  }
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true; msg.className="msg"; msg.textContent="Submitting…";
+
+  const fields = {
+    "Respondent Name": name,
+    "Email": document.getElementById("email").value.trim() || undefined,
+    "Fun Alarm Picks": [...funPicks],
+    "Traditional Alarm Picks": [...tradPicks],
+    "Comments": document.getElementById("comments").value.trim() || undefined,
+    "Submitted At": new Date().toISOString()
+  };
+
+  try{
+    const res = await fetch(`https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`,{
+      method:"POST",
+      headers:{ "Authorization":"Bearer "+AIRTABLE_TOKEN, "Content-Type":"application/json" },
+      body: JSON.stringify({ records:[{ fields }] })
+    });
+    if(!res.ok){ const e = await res.text(); throw new Error(e); }
+    msg.className="msg ok"; msg.textContent="✅ Thanks — your picks were recorded!";
+    btn.textContent="Submitted";
+  }catch(err){
+    console.error(err);
+    msg.className="msg err"; msg.textContent="Something went wrong submitting. Check the token/scope and try again.";
+    btn.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
